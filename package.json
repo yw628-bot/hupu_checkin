@@ -1,11 +1,14 @@
 {
   "name": "hupu-checkin",
   "version": "1.0.0",
+  "description": "Automated Hupu daily check-in bot using Playwright + stealth",
+  "main": "checkin.js",
   "type": "module",
-  "dependencies": {
-    "playwright": "^1.45.0"
-  },
   "scripts": {
     "checkin": "node checkin.js"
+  },
+  "dependencies": {
+    "playwright-extra": "^4.3.6",
+    "playwright-extra-plugin-stealth": "^2.11.2"
   }
 }
