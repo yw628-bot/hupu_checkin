@@ -7,7 +7,7 @@ if (!COOKIE) {
   process.exit(1);
 }
 
-// ✅ 修复后的 cookie parser（核心修复点）
+// ✅ 强化版 cookie parser（修复 domain + filter）
 function parseCookies(cookieStr) {
   return cookieStr
     .split(';')
@@ -25,24 +25,26 @@ function parseCookies(cookieStr) {
       return {
         name,
         value,
-        domain: 'bbs.hupu.us',
-        path: '/'
+        domain: '.bbs.hupu.us',   // ⭐⭐⭐ 关键修复点
+        path: '/',
+        httpOnly: false,
+        secure: true,
+        sameSite: 'Lax'
       };
     })
     .filter(Boolean);
 }
 
 (async () => {
-  const browser = await chromium.launch({
-    headless: true
-  });
-
+  const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext();
 
-  // 🧠 注入 cookie（修复后的结构）
   const cookies = parseCookies(COOKIE);
 
   console.log("🍪 cookies parsed:", cookies.length);
+
+  // 🔍 debug（很重要）
+  console.log("sample cookie:", cookies[0]);
 
   await context.addCookies(cookies);
 
@@ -54,14 +56,12 @@ function parseCookies(cookieStr) {
     waitUntil: 'networkidle'
   });
 
-  console.log("📍 Looking for check-in...");
+  console.log("📍 Clicking check-in...");
 
   try {
     await page.click('text=立刻签到', { timeout: 5000 });
   } catch (e) {
-    console.log("⚠️ fallback clicking icon...");
-
-    // fallback（页面结构变化时）
+    console.log("⚠️ fallback click...");
     await page.click('body');
     await page.click('text=立刻签到');
   }
@@ -70,10 +70,10 @@ function parseCookies(cookieStr) {
 
   const html = await page.content();
 
-  if (html.includes("success") || html.includes("成功") || html.includes("ok")) {
+  if (html.includes("success") || html.includes("成功")) {
     console.log("✅ Check-in SUCCESS");
   } else if (html.includes("already") || html.includes("已签到")) {
-    console.log("🟡 Already checked in today");
+    console.log("🟡 Already checked in");
   } else {
     console.log("❓ Unknown result");
   }
