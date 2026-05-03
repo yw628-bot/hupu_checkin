@@ -27,9 +27,7 @@ function parseCookies(str) {
 (async () => {
   console.log("🚀 START check-in bot");
 
-  const browser = await chromium.launch({
-    headless: true
-  });
+  const browser = await chromium.launch({ headless: true });
 
   const context = await browser.newContext({
     userAgent:
@@ -44,7 +42,7 @@ function parseCookies(str) {
   if (!cookies.length) {
     console.log("❌ cookie empty");
     await browser.close();
-    process.exit(1);
+    return;
   }
 
   await context.addCookies(cookies);
@@ -61,53 +59,57 @@ function parseCookies(str) {
   await page.waitForTimeout(4000);
 
   // ===========================
-// 🔍 LOGIN DEBUG BLOCK
-// ===========================
+  // 📦 ONLY READ BODY ONCE
+  // ===========================
+  const bodyText = await page.innerText('body').catch(() => '');
 
-console.log("📍 URL after load:", page.url());
+  console.log("📍 URL:", page.url());
+  console.log("🧾 preview:", bodyText.slice(0, 200));
 
-const text = await page.innerText('body').catch(() => '');
+  // ===========================
+  // 🔍 STATUS CHECK
+  // ===========================
+  const hasLoginPage =
+    bodyText.includes("登录") || bodyText.includes("注册");
 
-const hasLoginPage =
-  text.includes("登录") || text.includes("注册");
+  const hasUsername =
+    bodyText.includes("Tfboys_Yeah");
 
-const hasUsername =
-  text.includes("Tfboys_Yeah");
+  const isCloudflare =
+    bodyText.includes("Just a moment") ||
+    bodyText.includes("Attention Required");
 
-const isCloudflare =
-  text.includes("Just a moment") ||
-  text.includes("Attention Required");
+  let status = "UNKNOWN";
 
-let status = "UNKNOWN";
+  if (isCloudflare) {
+    status = "BLOCKED (Cloudflare)";
+  } else if (hasUsername) {
+    status = "LOGGED IN";
+  } else if (hasLoginPage) {
+    status = "NOT LOGGED IN";
+  } else {
+    status = "GUEST OR LOADING";
+  }
 
-if (isCloudflare) {
-  status = "BLOCKED (Cloudflare)";
-} else if (hasUsername) {
-  status = "LOGGED IN";
-} else if (hasLoginPage) {
-  status = "NOT LOGGED IN";
-} else {
-  status = "GUEST OR LOADING";
-}
+  console.log("📊 STATUS =", status);
 
-console.log("📊 STATUS =", status);
+  if (status === "BLOCKED (Cloudflare)") {
+    console.log("⛔ blocked, exit");
+    await browser.close();
+    return;
+  }
 
-// ❗如果你想直接中断（推荐加）
-if (status !== "LOGGED IN") {
-  console.log("⛔ stop flow - not logged in");
-  await browser.close();
-  return;
-}
-
-  const text = await page.innerText('body').catch(() => '');
-
-  console.log("🧾 preview:", text.slice(0, 200));
+  if (status === "NOT LOGGED IN") {
+    console.log("⛔ not logged in, exit");
+    await browser.close();
+    return;
+  }
 
   // =========================
-  // 🟡 只用“已签”判断
+  // 🟡 CHECK ALREADY SIGNED
   // =========================
-  if (text.includes("已签")) {
-    console.log("🟡 already checked in (detected '已签') → exit");
+  if (bodyText.includes("已签")) {
+    console.log("🟡 already checked in → exit");
     await browser.close();
     return;
   }
@@ -140,10 +142,8 @@ if (status !== "LOGGED IN") {
 
   if (!success) {
     console.log("❌ no check-in button found");
-    const html = await page.content();
-    console.log(html.slice(0, 800));
     await browser.close();
-    process.exit(1);
+    return;
   }
 
   console.log("⏳ waiting result...");
