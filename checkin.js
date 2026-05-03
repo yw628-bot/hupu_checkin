@@ -60,6 +60,45 @@ function parseCookies(str) {
 
   await page.waitForTimeout(4000);
 
+  // ===========================
+// 🔍 LOGIN DEBUG BLOCK
+// ===========================
+
+console.log("📍 URL after load:", page.url());
+
+const text = await page.innerText('body').catch(() => '');
+
+const hasLoginPage =
+  text.includes("登录") || text.includes("注册");
+
+const hasUsername =
+  text.includes("Tfboys_Yeah");
+
+const isCloudflare =
+  text.includes("Just a moment") ||
+  text.includes("Attention Required");
+
+let status = "UNKNOWN";
+
+if (isCloudflare) {
+  status = "BLOCKED (Cloudflare)";
+} else if (hasUsername) {
+  status = "LOGGED IN";
+} else if (hasLoginPage) {
+  status = "NOT LOGGED IN";
+} else {
+  status = "GUEST OR LOADING";
+}
+
+console.log("📊 STATUS =", status);
+
+// ❗如果你想直接中断（推荐加）
+if (status !== "LOGGED IN") {
+  console.log("⛔ stop flow - not logged in");
+  await browser.close();
+  return;
+}
+
   const text = await page.innerText('body').catch(() => '');
 
   console.log("🧾 preview:", text.slice(0, 200));
