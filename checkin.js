@@ -2,17 +2,7 @@ import { chromium } from 'playwright';
 
 const COOKIE = process.env.HUPU_COOKIE;
 
-if (!COOKIE) {
-  console.error("❌ [INIT] Missing HUPU_COOKIE");
-  process.exit(1);
-}
-
-/**
- * 🧠 Cookie 清洗 + Playwright 合规解析
- */
 function parseCookies(cookieStr) {
-  console.log("🧹 [STEP 1] Parsing cookies...");
-
   return cookieStr
     .replace(/\r?\n|\r/g, '')
     .trim()
@@ -23,14 +13,9 @@ function parseCookies(cookieStr) {
       const idx = pair.indexOf('=');
       if (idx === -1) return null;
 
-      let name = pair.slice(0, idx).trim();
-      let value = pair.slice(idx + 1).trim();
-
-      if (!name || !value) return null;
-
       return {
-        name,
-        value,
+        name: pair.slice(0, idx).trim(),
+        value: pair.slice(idx + 1).trim(),
         domain: '.bbs.hupu.us',
         path: '/',
         httpOnly: false,
@@ -42,82 +27,101 @@ function parseCookies(cookieStr) {
 }
 
 (async () => {
-  console.log("🚀 [START] Hupu check-in bot starting...");
+  console.log("🚀 START");
 
-  const browser = await chromium.launch({
-    headless: true
-  });
-
-  console.log("🧠 [STEP 2] Browser launched");
-
+  const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext();
 
-  const cookies = parseCookies(COOKIE);
-
-  console.log(`🍪 [STEP 3] Parsed cookies count: ${cookies.length}`);
-
-  if (cookies.length === 0) {
-    console.error("❌ No valid cookies parsed");
-    await browser.close();
-    process.exit(1);
-  }
-
-  console.log("📦 [STEP 4] Injecting cookies...");
-  await context.addCookies(cookies);
+  await context.addCookies(parseCookies(COOKIE));
 
   const page = await context.newPage();
 
-  console.log("🌐 [STEP 5] Navigating to site...");
+  console.log("🌐 STEP 1: goto site");
 
-  try {
-    await page.goto('https://bbs.hupu.us', {
-      waitUntil: 'domcontentloaded',
-      timeout: 60000
-    });
-    console.log("✅ [STEP 5] Page loaded");
-  } catch (err) {
-    console.error("❌ [STEP 5] Page load failed:", err.message);
+  await page.goto('https://bbs.hupu.us', {
+    waitUntil: 'domcontentloaded',
+    timeout: 60000
+  });
+
+  // 🧠 ① 页面状态信息（关键新增）
+  console.log("📍 CURRENT URL:", page.url());
+
+  const title = await page.title();
+  console.log("📄 TITLE:", title);
+
+  const bodyText = await page.locator('body').innerText().catch(() => '');
+  console.log("🧾 PAGE SNIPPET:", bodyText.slice(0, 300));
+
+  console.log("⏳ STEP 2: detect login/check-in state");
+
+  // 🧠 ② 已签到判断（提前识别）
+  if (
+    bodyText.includes("已签到") ||
+    bodyText.includes("already") ||
+    bodyText.includes("连续签到") ||
+    bodyText.includes("积分")
+  ) {
+    console.log("🟡 ALREADY CHECKED IN (detected early)");
+    await browser.close();
+    return;
+  }
+
+  console.log("🔍 STEP 3: searching all clickable elements...");
+
+  // 🧠 ③ 不再只找“立刻签到”，改为全扫描
+  const candidates = await page.locator('button, a, div').all();
+
+  let clicked = false;
+
+  for (const el of candidates.slice(0, 50)) {
+    const text = (await el.innerText().catch(() => '')).trim();
+
+    if (!text) continue;
+
+    // debug输出前20个可点击元素
+    if (!clicked) {
+      console.log("🔎 FOUND ELEMENT:", text);
+    }
+
+    if (
+      text.includes("签到") ||
+      text.includes("立刻") ||
+      text.includes("check") ||
+      text.includes("签到奖励")
+    ) {
+      console.log("🟢 CLICK TARGET FOUND:", text);
+
+      await el.click().catch(() => {});
+      clicked = true;
+      break;
+    }
+  }
+
+  if (!clicked) {
+    console.log("❌ NO CHECK-IN BUTTON FOUND");
+    console.log("📸 dumping page html for debugging...");
+
+    const html = await page.content();
+    console.log(html.slice(0, 1000));
+
     await browser.close();
     process.exit(1);
   }
 
-  console.log("⏳ [STEP 6] Waiting for page stability...");
+  console.log("⏳ STEP 4: waiting result...");
   await page.waitForTimeout(3000);
 
-  console.log("🔍 [STEP 7] Searching check-in button...");
+  const finalText = await page.innerText('body').catch(() => '');
 
-  try {
-    await page.click('text=立刻签到', { timeout: 8000 });
-    console.log("🟢 [STEP 7] Clicked check-in button");
-  } catch (e) {
-    console.log("⚠️ [STEP 7] Primary button not found, trying fallback...");
+  console.log("📄 RESULT TEXT:", finalText.slice(0, 300));
 
-    try {
-      await page.click('body');
-      await page.click('text=立刻签到');
-      console.log("🟢 [STEP 7] Fallback click success");
-    } catch (err) {
-      console.error("❌ [STEP 7] Failed to click check-in button");
-      await browser.close();
-      process.exit(1);
-    }
-  }
-
-  console.log("⏳ [STEP 8] Waiting for response...");
-  await page.waitForTimeout(3000);
-
-  const html = await page.content();
-
-  console.log("📄 [STEP 9] Checking result...");
-
-  if (html.includes("success") || html.includes("成功") || html.includes("ok")) {
-    console.log("✅ [RESULT] Check-in SUCCESS");
-  } else if (html.includes("already") || html.includes("已签到")) {
-    console.log("🟡 [RESULT] Already checked in today");
+  if (finalText.includes("成功") || finalText.includes("success")) {
+    console.log("✅ CHECK-IN SUCCESS");
+  } else if (finalText.includes("已签到")) {
+    console.log("🟡 ALREADY CHECKED IN");
   } else {
-    console.log("❓ [RESULT] Unknown result (need inspect page)");
+    console.log("❓ UNKNOWN RESULT");
   }
 
-  console.log("🏁 [DONE] Closing browser...");
   await browser.close();
 })();
