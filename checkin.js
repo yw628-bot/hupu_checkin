@@ -53,7 +53,7 @@ function parseCookies(str) {
 
   console.log("🌐 STEP 1: goto");
 
-  await page.goto('https://bbs.hupu.us', {
+  await page.goto('https://bbs.hupu.us/?v=checkin', {
     waitUntil: 'domcontentloaded',
     timeout: 60000
   });
