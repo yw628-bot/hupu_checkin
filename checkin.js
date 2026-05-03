@@ -51,25 +51,24 @@ function parseCookies(str) {
 
   const page = await context.newPage();
 
-  console.log("🌐 STEP 1: goto");
+  console.log("🌐 STEP 1: goto checkin page");
 
   await page.goto('https://bbs.hupu.us/?v=checkin', {
     waitUntil: 'domcontentloaded',
     timeout: 60000
   });
 
-  await page.waitForTimeout(5000);
+  await page.waitForTimeout(4000);
 
-  const url = page.url();
-  console.log("📍 URL:", url);
+  const text = await page.innerText('body').catch(() => '');
 
-  const body = await page.innerText('body').catch(() => '');
+  console.log("🧾 preview:", text.slice(0, 200));
 
-  console.log("🧾 preview:", body.slice(0, 200));
-
-  // 🔥 已签到判断
-  if (body.includes("已签到")) {
-    console.log("🟡 already checked in");
+  // =========================
+  // 🟡 只用“已签”判断
+  // =========================
+  if (text.includes("已签")) {
+    console.log("🟡 already checked in (detected '已签') → exit");
     await browser.close();
     return;
   }
@@ -78,16 +77,14 @@ function parseCookies(str) {
 
   let success = false;
 
-  // ✔ 最稳定方式：直接文本点击
   try {
     await page.click('text=立刻签到', { timeout: 8000 });
-    console.log("🟢 clicked: 立刻签到");
+    console.log("🟢 clicked check-in");
     success = true;
   } catch (e) {
-    console.log("⚠️ primary failed, fallback...");
+    console.log("⚠️ primary click failed, fallback...");
   }
 
-  // fallback：模糊匹配
   if (!success) {
     const els = await page.locator('button, a, div').all();
 
@@ -103,7 +100,7 @@ function parseCookies(str) {
   }
 
   if (!success) {
-    console.log("❌ no button found");
+    console.log("❌ no check-in button found");
     const html = await page.content();
     console.log(html.slice(0, 800));
     await browser.close();
@@ -120,8 +117,8 @@ function parseCookies(str) {
 
   if (result.includes("成功")) {
     console.log("✅ CHECK-IN SUCCESS");
-  } else if (result.includes("已签到")) {
-    console.log("🟡 ALREADY DONE");
+  } else if (result.includes("已签")) {
+    console.log("🟡 ALREADY CHECKED IN AFTER CLICK");
   } else {
     console.log("⚠️ UNKNOWN RESULT");
   }
