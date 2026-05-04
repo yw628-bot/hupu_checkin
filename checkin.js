@@ -37,7 +37,7 @@ function parseCookies(str) {
 
   const cookies = parseCookies(COOKIE);
 
-  console.log("🍪 cookies:", cookies.length);
+  console.log("🍪 parsed cookies:", cookies.length);
 
   if (!cookies.length) {
     console.log("❌ cookie empty");
@@ -56,14 +56,15 @@ function parseCookies(str) {
     timeout: 60000
   });
 
-  await page.waitForTimeout(4000);
+  await page.waitForTimeout(5000);
 
   // ===========================
-  // 📦 ONLY READ BODY ONCE
+  // 📦 READ BODY ONCE
   // ===========================
   const bodyText = await page.innerText('body').catch(() => '');
 
   console.log("📍 URL:", page.url());
+  console.log("📄 TITLE:", await page.title());
   console.log("🧾 preview:", bodyText.slice(0, 200));
 
   // ===========================
@@ -77,7 +78,8 @@ function parseCookies(str) {
 
   const isCloudflare =
     bodyText.includes("Just a moment") ||
-    bodyText.includes("Attention Required");
+    bodyText.includes("Attention Required") ||
+    bodyText.includes("Security verification");
 
   let status = "UNKNOWN";
 
@@ -93,14 +95,31 @@ function parseCookies(str) {
 
   console.log("📊 STATUS =", status);
 
-  if (status === "BLOCKED (Cloudflare)") {
-    console.log("⛔ blocked, exit");
-    await browser.close();
-    return;
+  // ===========================
+  // 🔬 DIAGNOSTIC BLOCK（核心）
+  // ===========================
+  const activeCookies = await context.cookies();
+  console.log("🍪 ACTIVE COOKIES:", activeCookies.map(c => c.name));
+
+  let diagnosis = "UNKNOWN";
+
+  if (isCloudflare) {
+    diagnosis = "❌ BLOCKED BY CLOUDFLARE";
+  } else if (hasUsername) {
+    diagnosis = "✅ LOGIN SUCCESS";
+  } else if (hasLoginPage && activeCookies.length > 0) {
+    diagnosis = "❌ COOKIE INVALID / EXPIRED";
+  } else if (activeCookies.length === 0) {
+    diagnosis = "❌ COOKIE NOT SET (FORMAT ISSUE)";
+  } else {
+    diagnosis = "⚠️ UNKNOWN STATE";
   }
 
-  if (status === "NOT LOGGED IN") {
-    console.log("⛔ not logged in, exit");
+  console.log("🧪 DIAGNOSIS:", diagnosis);
+
+  // ❗只阻断 Cloudflare（其他情况允许继续用于 debug）
+  if (status === "BLOCKED (Cloudflare)") {
+    console.log("⛔ blocked by Cloudflare → exit");
     await browser.close();
     return;
   }
@@ -122,7 +141,7 @@ function parseCookies(str) {
     await page.click('text=立刻签到', { timeout: 8000 });
     console.log("🟢 clicked check-in");
     success = true;
-  } catch (e) {
+  } catch {
     console.log("⚠️ primary click failed, fallback...");
   }
 
@@ -142,12 +161,16 @@ function parseCookies(str) {
 
   if (!success) {
     console.log("❌ no check-in button found");
+    const html = await page.content();
+    console.log("📄 HTML preview:", html.slice(0, 500));
     await browser.close();
     return;
   }
 
+  // ===========================
+  // ⏳ WAIT RESULT
+  // ===========================
   console.log("⏳ waiting result...");
-
   await page.waitForTimeout(4000);
 
   const result = await page.innerText('body').catch(() => '');
